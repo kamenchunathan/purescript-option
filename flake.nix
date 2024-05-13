@@ -1,53 +1,50 @@
 {
-  description = "iios";
 
+  description = "A Lambda Calculus parser";
+  
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-21.11";
-    easy-purescript-nix = {
-      url = "github:justinwoo/easy-purescript-nix";
-      flake = false;
-    };
-    flake-compat = {
-      url = "github:edolstra/flake-compat";
-      flake = false;
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-23.05";
+    purescript-overlay = {
+      url = "github:thomashoneyman/purescript-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = { self, nixpkgs, easy-purescript-nix, ... }@inputs:
-    let
-      name = "iios";
+  outputs = {
+    self,
+    nixpkgs,
+    ...
+  }@inputs:
+    let 
+      supportedSystems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
 
-      supportedSystems = [
-        "aarch64-darwin"
-        "x86_64-darwin"
-        "x86_64-linux"
-      ];
-
-      forAllSystems = f: nixpkgs.lib.genAttrs supportedSystems (system: f system);
-    in
-    {
-      devShell = forAllSystems (system:
-        let
-          pkgs = import nixpkgs { inherit system; };
-
-          easy-ps = import easy-purescript-nix { inherit pkgs; };
-        in
-        pkgs.mkShell {
-          inherit name;
-          buildInputs = (with pkgs; [
-            nodejs-18_x
-            nixpkgs-fmt
-          ]) ++ (with easy-ps; [
-            purs
-            purs-tidy
-            psa
-            spago
-            purescript-language-server
-          ]) ++ (pkgs.lib.optionals (system == "aarch64-darwin")
-            (with pkgs.darwin.apple_sdk.frameworks; [
-              Cocoa
-              CoreServices
-            ]));
+      forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
+      
+      nixpkgsFor = forAllSystems (system: import nixpkgs {
+        inherit system;
+        config = { };
+        overlays = builtins.attrValues self.overlays;
+      });
+      
+    in rec { 
+      overlays = {
+        purescript = inputs.purescript-overlay.overlays.default;
+      };
+      
+      devShells = forAllSystems (system:
+        let 
+          pkgs = nixpkgsFor.${system};
+        in { 
+          default = pkgs.mkShell {
+            name = "lambda-calculus-parser";
+            buildInputs = with pkgs; [
+              purs-bin.purs-0_15_14
+              spago-unstable
+              purescript-language-server
+              purs-tidy-bin.purs-tidy-0_10_0
+              purs-backend-es
+            ];
+          };
         });
-    };
+  };
 }
